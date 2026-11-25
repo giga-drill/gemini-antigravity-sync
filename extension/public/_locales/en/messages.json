@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "Gemini Chat Exporter",
+    "description": "Extension display name"
+  },
+  "extDescription": {
+    "message": "Export Gemini AI conversations to Markdown or PDF. Save locally or to Google Drive.",
+    "description": "Extension description"
+  }
+}

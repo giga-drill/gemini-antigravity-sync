@@ -1,0 +1,7 @@
+extension/node_modules/
+extension/dist/
+imports/
+service/__pycache__/
+service/state.json
+scripts/__pycache__/
+.DS_Store

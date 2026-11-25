@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Renderer</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #fff;
+    }
+    #render-target {
+      width: 794px; /* close to A4 at 96dpi */
+      margin: 0 auto;
+      padding: 0;
+      box-sizing: border-box;
+    }
+  </style>
+  <script src="assets/html2pdf-bundle.js"></script>
+</head>
+<body>
+  <div id="render-target"></div>
+  <script src="pdf-renderer.js"></script>
+</body>
+</html>

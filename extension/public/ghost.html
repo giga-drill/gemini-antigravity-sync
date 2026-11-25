@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ghost PDF Export</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #fff;
+    }
+
+    body {
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #1f2937;
+    }
+
+    #ghost-status-banner {
+      position: sticky;
+      top: 0;
+      z-index: 99999;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      border-bottom: 1px solid #bfdbfe;
+      font-size: 13px;
+      line-height: 1.45;
+      box-sizing: border-box;
+    }
+
+    #ghost-status-banner::before {
+      content: '';
+      flex: 0 0 auto;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #93c5fd;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: ghost-status-spin 0.9s linear infinite;
+    }
+
+    #ghost-status-banner.is-complete {
+      background: #ecfdf5;
+      color: #166534;
+      border-bottom-color: #bbf7d0;
+    }
+
+    #ghost-status-banner.is-complete::before {
+      animation: none;
+      border: none;
+      width: auto;
+      height: auto;
+      content: '✓';
+      color: #16a34a;
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    #ghost-status-text {
+      min-width: 0;
+    }
+
+    #content-container {
+      width: min(1100px, 100%);
+      margin: 0 auto;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    @media print {
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
+
+      .debug-banner {
+        display: none !important;
+      }
+
+      #ghost-status-banner {
+        display: none !important;
+      }
+
+      body,
+      html,
+      .chat-document {
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+        display: block !important;
+      }
+    }
+
+    @keyframes ghost-status-spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  </style>
+  <link rel="stylesheet" href="notion-theme.css" />
+</head>
+<body>
+  <div id="ghost-status-banner" role="status" aria-live="polite">
+    <span id="ghost-status-text">Preparing PDF export…</span>
+  </div>
+  <div id="content-container"></div>
+  <script>
+    (function initializeGhostStatusLanguage() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var lang = (params.get('lang') || '').toLowerCase().includes('zh') ? 'zh-CN' : 'en-US';
+        document.documentElement.lang = lang;
+        var text = document.getElementById('ghost-status-text');
+        if (!text) return;
+        text.textContent = lang === 'zh-CN' ? '正在准备 PDF 导出，请稍候…' : 'Preparing PDF export…';
+      } catch {
+        // Ignore early localization failures; ghost.js will set the final status copy.
+      }
+    })();
+  </script>
+  <script src="ghost.js"></script>
+</body>
+</html>

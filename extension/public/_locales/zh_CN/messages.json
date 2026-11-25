@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "Gemini 对话导出器",
+    "description": "扩展显示名称"
+  },
+  "extDescription": {
+    "message": "将 Gemini AI 对话导出为 Markdown 或 PDF，支持本地保存或上传至 Google 云端硬盘。",
+    "description": "扩展描述"
+  }
+}

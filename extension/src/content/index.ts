@@ -323,23 +323,16 @@ function reduceMessagePayload(messages: ChatMessage[]): ChatMessage[] {
 const expandButtonClickHistory = new WeakMap<HTMLButtonElement, number>();
 const EXPAND_BUTTON_RECLICK_COOLDOWN_MS = 1_200;
 
-function getExpandButtonSearchRoots(): ParentNode[] {
-  const main = document.querySelector('main, [role="main"]');
-  const candidates = [main, document.body, document.documentElement];
-  const roots: ParentNode[] = [];
-  const seen = new Set<ParentNode>();
-
-  for (const candidate of candidates) {
-    if (!candidate || seen.has(candidate)) continue;
-    seen.add(candidate);
-    roots.push(candidate);
-  }
-
-  return roots;
-}
+const NON_EXPAND_ANCESTOR_SELECTOR =
+  'a, nav, aside, header, [role="navigation"], bard-sidenav, side-navigation-content, .sidenav-with-history-container';
+const EXCLUDED_BUTTON_LABEL_PATTERN =
+  /new chat|新对话|menu|菜单|sidebar|侧边栏|edit|编辑|delete|删除|copy|复制|share|分享|retry|重试|regenerate/i;
+const MESSAGE_EXPAND_ROOT_SELECTOR =
+  'user-query, .user-query, user-query-content, model-response, .model-response, .conversation-turn, [data-turn-id], .message-row';
 
 function clickExpandButtons(): void {
-  const expandPattern = /show more|expand|继续|展开|显示更多|完整/i;
+  const userExpandPattern = /show more|expand|展开|显示更多/i;
+  const modelExpandPattern = /show more|展开|显示更多/i;
   const seen = new Set<HTMLButtonElement>();
   const now = Date.now();
 
@@ -349,6 +342,14 @@ function clickExpandButtons(): void {
     if (button.disabled) return;
     if (button.getAttribute('aria-haspopup')) return;
     if (button.getAttribute('aria-expanded') === 'true') return;
+    if (button.closest(NON_EXPAND_ANCESTOR_SELECTOR)) return;
+
+    const labelText = [
+      button.textContent ?? '',
+      button.getAttribute('aria-label') ?? '',
+      button.getAttribute('title') ?? '',
+    ].join(' ').trim();
+    if (labelText && EXCLUDED_BUTTON_LABEL_PATTERN.test(labelText)) return;
 
     const lastClickedAt = expandButtonClickHistory.get(button) ?? 0;
     if (now - lastClickedAt < EXPAND_BUTTON_RECLICK_COOLDOWN_MS) return;
@@ -357,36 +358,35 @@ function clickExpandButtons(): void {
     button.click();
   };
 
-  for (const root of getExpandButtonSearchRoots()) {
-    const userQueries = root.querySelectorAll('user-query, .user-query, user-query-content');
-    for (const uq of userQueries) {
-      const buttons = Array.from(uq.querySelectorAll<HTMLButtonElement>('button'));
-      for (const button of buttons) {
-        const iconText = Array.from(button.querySelectorAll('mat-icon'))
-          .map((icon) => `${icon.textContent ?? ''} ${icon.getAttribute('fonticon') ?? ''}`)
-          .join(' ');
-        const isCollapsedPromptBtn =
-          button.getAttribute('aria-expanded') === 'false' ||
-          /keyboard_arrow_down|expand_more/i.test(iconText);
-        if (isCollapsedPromptBtn) {
-          tryClick(button);
-        }
-      }
-    }
-
-    const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>('button'));
+  const userQueries = document.querySelectorAll('user-query, .user-query, user-query-content');
+  for (const uq of userQueries) {
+    const buttons = Array.from(uq.querySelectorAll<HTMLButtonElement>('button'));
     for (const button of buttons) {
-      const iconLabel = Array.from(button.querySelectorAll('mat-icon'))
+      const iconText = Array.from(button.querySelectorAll('mat-icon'))
         .map((icon) => `${icon.textContent ?? ''} ${icon.getAttribute('fonticon') ?? ''}`)
         .join(' ');
-      const searchableLabel = [
+      const promptLabel = [
         button.textContent ?? '',
         button.getAttribute('aria-label') ?? '',
         button.getAttribute('title') ?? '',
-        button.getAttribute('data-test-id') ?? '',
-        iconLabel,
       ].join(' ').trim();
-      if (!searchableLabel || !expandPattern.test(searchableLabel)) continue;
+      const isCollapsedPromptBtn =
+        button.getAttribute('aria-expanded') === 'false' ||
+        (promptLabel !== '' && userExpandPattern.test(promptLabel)) ||
+        /keyboard_arrow_down|expand_more/i.test(iconText);
+      if (isCollapsedPromptBtn) {
+        tryClick(button);
+      }
+    }
+  }
+
+  const messageContainers = document.querySelectorAll(MESSAGE_EXPAND_ROOT_SELECTOR);
+  for (const container of messageContainers) {
+    const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>('button'));
+    for (const button of buttons) {
+      if (button.closest('user-query, .user-query, user-query-content')) continue;
+      const visibleText = (button.textContent ?? '').trim();
+      if (!visibleText || !modelExpandPattern.test(visibleText)) continue;
       tryClick(button);
     }
   }

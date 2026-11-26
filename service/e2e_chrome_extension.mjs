@@ -59,7 +59,13 @@ const MOCK_GEMINI_HTML = `<!doctype html>
 <body>
   <header>
     <div data-test-id="conversation-title">${EXPECTED_TITLE}</div>
+    <button id="trap-expand-menu" type="button" aria-label="展开菜单" aria-expanded="false">
+      <mat-icon>menu</mat-icon>
+    </button>
   </header>
+  <nav class="side-navigation-content">
+    <button id="trap-new-chat" type="button" data-test-id="expanded-button" aria-label="发起新对话">新对话</button>
+  </nav>
   <main>
     <div class="conversation-turn">
       <user-query>
@@ -92,6 +98,12 @@ const MOCK_GEMINI_HTML = `<!doctype html>
     </div>
   </main>
   <script nonce="e2etestnonce">
+    ['trap-new-chat', 'trap-expand-menu'].forEach(function (id) {
+      document.getElementById(id).addEventListener('click', function () {
+        window.__TRAP_CLICKED__ = id;
+        history.pushState({}, '', '/app');
+      });
+    });
     document.getElementById('turn1-expand-btn').addEventListener('click', function () {
       this.setAttribute('aria-expanded', 'true');
       var qt = document.getElementById('turn1-query-text');
@@ -288,6 +300,13 @@ async function main() {
       mdContent.includes(TURN3_TRUNCATED_H2)
     ) {
       throw new Error(`Leaked cdk-visually-hidden heading or icon text into Markdown:\n${mdContent}`);
+    }
+    const trapClicked = await geminiPage.evaluate(() => window.__TRAP_CLICKED__ || null);
+    if (trapClicked) {
+      throw new Error(`Extension accidentally clicked navigation trap button: ${trapClicked}`);
+    }
+    if (!geminiPage.url().includes('/app/e2e-verify-001')) {
+      throw new Error(`Gemini page unexpectedly navigated to: ${geminiPage.url()}`);
     }
     console.log('[E2E] Real Chrome download verified:', EXPECTED_MD_PATH);
 

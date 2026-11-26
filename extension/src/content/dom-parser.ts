@@ -36,14 +36,32 @@ const MODEL_SELECTORS = [
   '.markdown-main-panel',
 ];
 
-/** 文本内容区域的候选选择器 */
+/** 用户消息内容区域的候选选择器 */
+const USER_CONTENT_SELECTORS = [
+  '.query-text',
+  'user-query-content',
+  '.user-query-bubble-with-background',
+  '.message-content',
+  '.text-content',
+];
+
+/** 模型回复文本内容区域的候选选择器 */
 const CONTENT_SELECTORS = [
   '.message-content',
   '.text-content',
   '.markdown-content',
   'message-content',
-  'p, pre, code, ul, ol, h1, h2, h3, h4, h5, h6, table',
+  '.markdown-main-panel',
 ];
+
+/** 辅助阅读/装饰节点选择器，导出正文与 HTML 时需剥离 */
+const NON_CONTENT_SELECTOR =
+  'script, style, svg, button, mat-icon, [aria-hidden="true"], .cdk-visually-hidden, .sr-only, .visually-hidden';
+
+function resolveContentElement(turn: Element, role: 'user' | 'model'): Element {
+  const selectors = role === 'user' ? USER_CONTENT_SELECTORS : CONTENT_SELECTORS;
+  return queryFirst(turn, selectors) ?? turn;
+}
 
 function queryFirst(root: Element | Document, selectors: string[]): Element | null {
   for (const sel of selectors) {
@@ -65,8 +83,8 @@ function queryAll(root: Element | Document, selectors: string[]): Element[] {
 function extractHtml(el: Element): string {
   const clone = el.cloneNode(true) as Element;
 
-  // Remove non-semantic elements entirely
-  clone.querySelectorAll('script, style, svg, button, [aria-hidden="true"]').forEach(n => n.remove());
+  // Remove non-semantic and screen-reader-only elements entirely
+  clone.querySelectorAll(NON_CONTENT_SELECTOR).forEach(n => n.remove());
   clone.querySelectorAll('img').forEach((n) => n.remove());
 
   // Unwrap Gemini custom elements and meaningless wrapper divs,
@@ -139,9 +157,9 @@ function extractHtml(el: Element): string {
     .trim();
 }
 
-/** 从元素中提取可读文本, 保留基本的 Markdown 格式 */
-function extractText(el: Element): string {
-  // 如果元素内有 markdown 渲染的内容, 尝试提取结构化文本
+const NESTED_BLOCK_SELECTOR = 'p, pre, ul, ol, table, br, h1, h2, h3, h4, h5, h6, div';
+
+function extractTextFromCleanNode(el: Element): string {
   const parts: string[] = [];
 
   for (const child of el.childNodes) {
@@ -149,11 +167,12 @@ function extractText(el: Element): string {
       const text = child.textContent?.trim();
       if (text) parts.push(text);
     } else if (child.nodeType === Node.ELEMENT_NODE) {
-      const tag = (child as Element).tagName.toLowerCase();
-      const innerText = (child as Element).textContent?.trim() ?? '';
+      const childEl = child as Element;
+      const tag = childEl.tagName.toLowerCase();
+      const innerText = childEl.textContent?.trim() ?? '';
       switch (tag) {
         case 'pre': {
-          const code = (child as Element).querySelector('code');
+          const code = childEl.querySelector('code');
           const lang = code?.className?.match(/language-(\w+)/)?.[1] ?? '';
           parts.push(`\n\`\`\`${lang}\n${code?.textContent ?? innerText}\n\`\`\`\n`);
           break;
@@ -167,7 +186,7 @@ function extractText(el: Element): string {
           break;
         }
         case 'ul': case 'ol': {
-          const items = (child as Element).querySelectorAll(':scope > li');
+          const items = childEl.querySelectorAll(':scope > li');
           items.forEach((li, i) => {
             const prefix = tag === 'ol' ? `${i + 1}. ` : '- ';
             parts.push(`${prefix}${li.textContent?.trim()}`);
@@ -191,12 +210,24 @@ function extractText(el: Element): string {
           // 图片由 image-extractor 处理
           break;
         default:
-          if (innerText) parts.push(innerText);
+          if (childEl.querySelector(NESTED_BLOCK_SELECTOR)) {
+            const nested = extractTextFromCleanNode(childEl);
+            if (nested) parts.push(nested);
+          } else if (innerText) {
+            parts.push(innerText);
+          }
       }
     }
   }
 
   return parts.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** 从元素中提取可读文本, 保留基本的 Markdown 格式并剔除隐藏辅助文本 */
+function extractText(el: Element): string {
+  const clone = el.cloneNode(true) as Element;
+  clone.querySelectorAll(NON_CONTENT_SELECTOR).forEach(n => n.remove());
+  return extractTextFromCleanNode(clone);
 }
 
 function extractTable(table: HTMLTableElement): string {
@@ -258,7 +289,7 @@ export async function parseMessages(
     for (const turn of turns) {
       if (!checkSelected(turn)) continue;
       const role: 'user' | 'model' = isUserTurn(turn) ? 'user' : 'model';
-      const contentEl = queryFirst(turn, CONTENT_SELECTORS) ?? turn;
+      const contentEl = resolveContentElement(turn, role);
       const content = extractText(contentEl);
       const contentHtml = extractHtml(contentEl);
       const images = role === 'user' ? await extractImages(turn, imageOptions) : [];
@@ -277,8 +308,9 @@ export async function parseMessages(
   for (let i = 0; i < maxLen; i++) {
     if (i < userEls.length) {
       if (checkSelected(userEls[i])) {
-        const content = extractText(userEls[i]);
-        const contentHtml = extractHtml(userEls[i]);
+        const contentEl = resolveContentElement(userEls[i], 'user');
+        const content = extractText(contentEl);
+        const contentHtml = extractHtml(contentEl);
         const images = await extractImages(userEls[i], imageOptions);
         if (content || images.length > 0) {
           messages.push({ role: 'user', content, contentHtml, images, timestamp: Date.now() });
@@ -287,8 +319,9 @@ export async function parseMessages(
     }
     if (i < modelEls.length) {
       if (checkSelected(modelEls[i])) {
-        const content = extractText(modelEls[i]);
-        const contentHtml = extractHtml(modelEls[i]);
+        const contentEl = resolveContentElement(modelEls[i], 'model');
+        const content = extractText(contentEl);
+        const contentHtml = extractHtml(contentEl);
         const images: string[] = [];
         if (content || images.length > 0) {
           messages.push({ role: 'model', content, contentHtml, images, timestamp: Date.now() });

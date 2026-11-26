@@ -43,6 +43,13 @@ const PROJECT_ID = (process.env.GEMINI_SYNC_PROJECT_ID || process.env.ANTIGRAVIT
 const EXPECTED_TITLE = 'E2E 真实浏览器扩展验证';
 const EXPECTED_MD_PATH = path.join(WATCH_DIR, `${EXPECTED_TITLE}.md`);
 
+const TURN1_TRUNCATED_H2 =
+  '第一轮：这是一段超过两百字的用户长输入，用来复现并验证 Gemini 网页端隐藏 h2 截断和折叠按钮的问题，测试真实内容是否被完整抓下来…';
+const TURN1_SENTINEL = '【完整结尾标记-TURN1】';
+const TURN3_TRUNCATED_H2 =
+  '第三轮：另一段超过一百字的多段落用户消息，用来验证没有折叠按钮时也不会被 cdk-visually-hidden 截断…';
+const TURN3_SENTINEL = '【完整结尾标记-TURN3】';
+
 const MOCK_GEMINI_HTML = `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -56,15 +63,44 @@ const MOCK_GEMINI_HTML = `<!doctype html>
   <main>
     <div class="conversation-turn">
       <user-query>
-        <div class="message-content"><p>第一轮：测试 Chrome 扩展自动导出到 Antigravity。</p></div>
+        <h2 class="cdk-visually-hidden"><span>你说</span><span>${TURN1_TRUNCATED_H2}</span></h2>
+        <user-query-content>
+          <div class="query-text" id="turn1-query-text">
+            <p class="query-text-line">第一轮：这是一段超过两百字的用户长输入，用来复现并验证 Gemini 网页端隐藏 h2 截断和折叠按钮的问题。</p>
+          </div>
+          <button id="turn1-expand-btn" type="button" aria-label="展开文本" aria-expanded="false">
+            <mat-icon>keyboard_arrow_down</mat-icon>
+          </button>
+        </user-query-content>
       </user-query>
     </div>
     <div class="conversation-turn">
       <model-response>
-        <div class="message-content"><p>第二轮：这是模拟的 Gemini 回复，请仅做简短确认。</p></div>
+        <message-content><p>第二轮：这是模拟的 Gemini 回复，请仅做简短确认。</p></message-content>
       </model-response>
     </div>
+    <div class="conversation-turn">
+      <user-query>
+        <h2 class="cdk-visually-hidden"><span>你说</span><span>${TURN3_TRUNCATED_H2}</span></h2>
+        <user-query-content>
+          <div class="query-text">
+            <p class="query-text-line">第三轮第一段内容：当用户一次性输入很多背景资料、多行思路和具体细节时，Gemini 页面只会在视觉隐藏的 h2 里保留前一百个字加省略号。</p>
+            <p class="query-text-line">第三轮第二段内容：真正的全文在 .query-text 的多个 query-text-line 段落里，必须把前后所有段落都完整同步到本地 ${TURN3_SENTINEL}</p>
+          </div>
+        </user-query-content>
+      </user-query>
+    </div>
   </main>
+  <script nonce="e2etestnonce">
+    document.getElementById('turn1-expand-btn').addEventListener('click', function () {
+      this.setAttribute('aria-expanded', 'true');
+      var qt = document.getElementById('turn1-query-text');
+      var p2 = document.createElement('p');
+      p2.className = 'query-text-line';
+      p2.textContent = '第一轮展开后的第二段完整正文：这里包含了前面折叠起来的后半段需求说明、产品亮点细节与最终补充要求，确保扩展会自动点击仅图标的折叠按钮并抓到全文 ${TURN1_SENTINEL}';
+      qt.appendChild(p2);
+    });
+  </script>
 </body>
 </html>`;
 
@@ -238,8 +274,20 @@ async function main() {
     }
 
     const mdContent = fs.readFileSync(EXPECTED_MD_PATH, 'utf-8');
-    if (!mdContent.includes(`title: "${EXPECTED_TITLE}"`) || !mdContent.includes('第一轮：测试 Chrome 扩展自动导出到 Antigravity。')) {
-      throw new Error(`Unexpected Markdown content:\n${mdContent}`);
+    if (
+      !mdContent.includes(`title: "${EXPECTED_TITLE}"`) ||
+      !mdContent.includes(TURN1_SENTINEL) ||
+      !mdContent.includes(TURN3_SENTINEL)
+    ) {
+      throw new Error(`Missing full multi-paragraph/collapsed user message content:\n${mdContent}`);
+    }
+    if (
+      mdContent.includes('你说') ||
+      mdContent.includes('keyboard_arrow_down') ||
+      mdContent.includes(TURN1_TRUNCATED_H2) ||
+      mdContent.includes(TURN3_TRUNCATED_H2)
+    ) {
+      throw new Error(`Leaked cdk-visually-hidden heading or icon text into Markdown:\n${mdContent}`);
     }
     console.log('[E2E] Real Chrome download verified:', EXPECTED_MD_PATH);
 

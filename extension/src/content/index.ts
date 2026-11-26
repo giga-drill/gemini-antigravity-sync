@@ -339,26 +339,55 @@ function getExpandButtonSearchRoots(): ParentNode[] {
 }
 
 function clickExpandButtons(): void {
-  const expandPattern = /show more|expand|继续|展开|显示更多/i;
+  const expandPattern = /show more|expand|继续|展开|显示更多|完整/i;
   const seen = new Set<HTMLButtonElement>();
   const now = Date.now();
 
+  const tryClick = (button: HTMLButtonElement): void => {
+    if (seen.has(button)) return;
+    seen.add(button);
+    if (button.disabled) return;
+    if (button.getAttribute('aria-haspopup')) return;
+    if (button.getAttribute('aria-expanded') === 'true') return;
+
+    const lastClickedAt = expandButtonClickHistory.get(button) ?? 0;
+    if (now - lastClickedAt < EXPAND_BUTTON_RECLICK_COOLDOWN_MS) return;
+
+    expandButtonClickHistory.set(button, now);
+    button.click();
+  };
+
   for (const root of getExpandButtonSearchRoots()) {
+    const userQueries = root.querySelectorAll('user-query, .user-query, user-query-content');
+    for (const uq of userQueries) {
+      const buttons = Array.from(uq.querySelectorAll<HTMLButtonElement>('button'));
+      for (const button of buttons) {
+        const iconText = Array.from(button.querySelectorAll('mat-icon'))
+          .map((icon) => `${icon.textContent ?? ''} ${icon.getAttribute('fonticon') ?? ''}`)
+          .join(' ');
+        const isCollapsedPromptBtn =
+          button.getAttribute('aria-expanded') === 'false' ||
+          /keyboard_arrow_down|expand_more/i.test(iconText);
+        if (isCollapsedPromptBtn) {
+          tryClick(button);
+        }
+      }
+    }
+
     const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>('button'));
     for (const button of buttons) {
-      if (seen.has(button)) continue;
-      seen.add(button);
-
-      const text = (button.textContent ?? '').trim();
-      if (!text || !expandPattern.test(text)) continue;
-      if (button.disabled) continue;
-      if (button.getAttribute('aria-expanded') === 'true') continue;
-
-      const lastClickedAt = expandButtonClickHistory.get(button) ?? 0;
-      if (now - lastClickedAt < EXPAND_BUTTON_RECLICK_COOLDOWN_MS) continue;
-
-      expandButtonClickHistory.set(button, now);
-      button.click();
+      const iconLabel = Array.from(button.querySelectorAll('mat-icon'))
+        .map((icon) => `${icon.textContent ?? ''} ${icon.getAttribute('fonticon') ?? ''}`)
+        .join(' ');
+      const searchableLabel = [
+        button.textContent ?? '',
+        button.getAttribute('aria-label') ?? '',
+        button.getAttribute('title') ?? '',
+        button.getAttribute('data-test-id') ?? '',
+        iconLabel,
+      ].join(' ').trim();
+      if (!searchableLabel || !expandPattern.test(searchableLabel)) continue;
+      tryClick(button);
     }
   }
 }
